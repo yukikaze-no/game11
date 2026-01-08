@@ -204,7 +204,7 @@ async function startGame(songIndex, difficulty) {
       time: n.beat * 60 / bpm,
       hitTime: n.beat * 60 / bpm + travelTime,
       endTime: n.endBeat ? n.endBeat * 60 / bpm : null,
-      endHitTime: n.endEnd ? n.endBeat * 60 / bpm + travelTime : null,
+      endHitTime: n.endBeat ? n.endBeat * 60 / bpm + travelTime : null,
       type: n.type,
       judged: false,
       glow: 0,
@@ -259,17 +259,11 @@ function applyJudgment(note, result) {
   lastJudgment = result;
   lastJudgmentTimer = 0.5;
 
-  /* ------------------------------
-     LANE FLASH
-  ------------------------------ */
   laneFlash[note.lane].alpha = 0.6;
   if (result === "Perfect") laneFlash[note.lane].color = "deepskyblue";
   else if (result === "Good") laneFlash[note.lane].color = "lime";
   else laneFlash[note.lane].color = "red";
 
-  /* ------------------------------
-     EXPLOSION EFFECT
-  ------------------------------ */
   explosions.push({
     x: note.lane * laneWidth + laneWidth / 2,
     y: hitY,
@@ -278,9 +272,6 @@ function applyJudgment(note, result) {
     color: laneFlash[note.lane].color
   });
 
-  /* ------------------------------
-     CLICK SE
-  ------------------------------ */
   seClick.currentTime = 0;
   if (result === "Perfect") seClick.volume = 0.45;
   else if (result === "Good") seClick.volume = 0.35;
@@ -374,23 +365,14 @@ function update() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawBackground(t);
 
-  /* ------------------------------
-     LANE BACKGROUND
-  ------------------------------ */
   for (let i = 0; i < lanes; i++) {
     ctx.fillStyle = "rgba(255,255,255,0.05)";
     ctx.fillRect(i * laneWidth, 0, laneWidth - 2, canvas.height);
   }
 
-  /* ------------------------------
-     HIT LINE
-  ------------------------------ */
   ctx.fillStyle = "yellow";
   ctx.fillRect(0, hitY, canvas.width, 4);
 
-  /* ------------------------------
-     NOTES
-  ------------------------------ */
   for (let n of notes) {
     const y = hitY - (n.hitTime - t) * speed;
     const x = n.lane * laneWidth + 10;
@@ -417,9 +399,6 @@ function update() {
     if (n.glow > 0) n.glow -= 1 / 60;
   }
 
-  /* ------------------------------
-     LANE FLASH
-  ------------------------------ */
   for (let i = 0; i < 4; i++) {
     if (laneFlash[i].alpha > 0) {
       ctx.fillStyle = laneFlash[i].color;
@@ -431,9 +410,6 @@ function update() {
     }
   }
 
-  /* ------------------------------
-     EXPLOSIONS
-  ------------------------------ */
   for (let e of explosions) {
     ctx.beginPath();
     ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
@@ -448,9 +424,6 @@ function update() {
   }
   explosions = explosions.filter(e => e.alpha > 0);
 
-  /* ------------------------------
-     HUD
-  ------------------------------ */
   ctx.fillStyle = "white";
   ctx.font = "18px sans-serif";
   ctx.fillText("Score: " + score, 10, 25);
