@@ -82,7 +82,13 @@ if (isMobileDevice()) {
 }
 
 /* ------------------------------
-   SONG LIST (list.json)
+   SOUND EFFECTS
+------------------------------ */
+const seClick = new Audio("se/click.mp3");
+seClick.volume = 0.35;
+
+/* ------------------------------
+   SONG LIST
 ------------------------------ */
 let songs = [];
 
@@ -112,8 +118,9 @@ function buildSongMenu() {
    GAME VARIABLES
 ------------------------------ */
 let notes = [];
-let internalMarkers = [];   // ★ 5番レーン用マーカー
-let bpmCurrent = 120;       // ★ 終了判定用に保持
+let internalMarkers = [];
+let bpmCurrent = 120;
+
 let startTime = 0;
 let score = 0, combo = 0, maxCombo = 0;
 let judgeCount = { Perfect: 0, Good: 0, Miss: 0 };
@@ -121,7 +128,7 @@ let lastJudgment = "", lastJudgmentTimer = 0;
 let holdState = [null, null, null, null];
 let audio = null;
 
-const lanes = 4; // playable lanes: 0–3
+const lanes = 4;
 const laneWidth = canvas.width / lanes;
 const hitY = 500;
 const travelTime = 2.0;
@@ -133,6 +140,21 @@ const missWindow = 0.18;
 
 const keyToLane = { s: 0, d: 1, k: 2, l: 3 };
 
+/* ------------------------------
+   LANE FLASH + EXPLOSIONS
+------------------------------ */
+let laneFlash = [
+  { alpha: 0, color: "white" },
+  { alpha: 0, color: "white" },
+  { alpha: 0, color: "white" },
+  { alpha: 0, color: "white" }
+];
+
+let explosions = []; // {x, y, radius, alpha, color}
+
+/* ------------------------------
+   INPUT HANDLING
+------------------------------ */
 document.addEventListener("keydown", e => {
   const key = e.key.toLowerCase();
   if (keyToLane[key] !== undefined) handleKeyDown(keyToLane[key]);
@@ -166,38 +188,35 @@ async function startGame(songIndex, difficulty) {
   document.getElementById("songTitle").innerText =
     `${song.title} [${difficulty.toUpperCase()}]`;
 
-  // Load chart
   const res = await fetch(song.json);
   const chart = await res.json();
 
   const bpm = chart.bpm;
-  bpmCurrent = bpm; // ★ 終了判定用に保持
+  bpmCurrent = bpm;
+
   const pattern = chart.patterns[difficulty];
   const markers = chart.patterns.internalMarkers || [];
 
-  // Generate playable notes (lane 0–3 only)
   notes = pattern
-    .filter(n => n.lane !== 4) // ★ 内部マーカー除外
+    .filter(n => n.lane !== 4)
     .map(n => ({
       lane: n.lane,
       time: n.beat * 60 / bpm,
       hitTime: n.beat * 60 / bpm + travelTime,
       endTime: n.endBeat ? n.endBeat * 60 / bpm : null,
-      endHitTime: n.endBeat ? n.endBeat * 60 / bpm + travelTime : null,
+      endHitTime: n.endEnd ? n.endBeat * 60 / bpm + travelTime : null,
       type: n.type,
       judged: false,
       glow: 0,
       active: false
     }));
 
-  // Internal markers (lane:4) → 時間だけ保持
   internalMarkers = markers.map(m => ({
     beat: m.beat,
     time: m.beat * 60 / bpm,
     hitTime: m.beat * 60 / bpm + travelTime
   }));
 
-  // Reset game state
   score = 0;
   combo = 0;
   maxCombo = 0;
@@ -206,7 +225,6 @@ async function startGame(songIndex, difficulty) {
   lastJudgmentTimer = 0;
   holdState = [null, null, null, null];
 
-  // Play audio
   audio = new Audio(song.audio);
   audio.play();
 
@@ -240,6 +258,34 @@ function applyJudgment(note, result) {
 
   lastJudgment = result;
   lastJudgmentTimer = 0.5;
+
+  /* ------------------------------
+     LANE FLASH
+  ------------------------------ */
+  laneFlash[note.lane].alpha = 0.6;
+  if (result === "Perfect") laneFlash[note.lane].color = "deepskyblue";
+  else if (result === "Good") laneFlash[note.lane].color = "lime";
+  else laneFlash[note.lane].color = "red";
+
+  /* ------------------------------
+     EXPLOSION EFFECT
+  ------------------------------ */
+  explosions.push({
+    x: note.lane * laneWidth + laneWidth / 2,
+    y: hitY,
+    radius: 5,
+    alpha: 1,
+    color: laneFlash[note.lane].color
+  });
+
+  /* ------------------------------
+     CLICK SE
+  ------------------------------ */
+  seClick.currentTime = 0;
+  if (result === "Perfect") seClick.volume = 0.45;
+  else if (result === "Good") seClick.volume = 0.35;
+  else seClick.volume = 0.25;
+  seClick.play();
 }
 
 /* ------------------------------
@@ -296,18 +342,16 @@ function handleTouchEnd() {
 }
 
 /* ------------------------------
-   END CHECK (with internal markers)
+   END CHECK
 ------------------------------ */
 function checkEnd(t) {
   let lastEnd = 0;
 
-  // playable notes
   for (let n of notes) {
     const end = n.type === "long" ? n.endHitTime : n.hitTime;
     if (end > lastEnd) lastEnd = end;
   }
 
-  // internal markers (lane:4)
   for (let m of internalMarkers) {
     if (m.hitTime > lastEnd) lastEnd = m.hitTime;
   }
@@ -330,17 +374,23 @@ function update() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawBackground(t);
 
-  // Lanes
+  /* ------------------------------
+     LANE BACKGROUND
+  ------------------------------ */
   for (let i = 0; i < lanes; i++) {
     ctx.fillStyle = "rgba(255,255,255,0.05)";
     ctx.fillRect(i * laneWidth, 0, laneWidth - 2, canvas.height);
   }
 
-  // Hit line
+  /* ------------------------------
+     HIT LINE
+  ------------------------------ */
   ctx.fillStyle = "yellow";
   ctx.fillRect(0, hitY, canvas.width, 4);
 
-  // Notes (0–3 only)
+  /* ------------------------------
+     NOTES
+  ------------------------------ */
   for (let n of notes) {
     const y = hitY - (n.hitTime - t) * speed;
     const x = n.lane * laneWidth + 10;
@@ -367,7 +417,40 @@ function update() {
     if (n.glow > 0) n.glow -= 1 / 60;
   }
 
-  // HUD
+  /* ------------------------------
+     LANE FLASH
+  ------------------------------ */
+  for (let i = 0; i < 4; i++) {
+    if (laneFlash[i].alpha > 0) {
+      ctx.fillStyle = laneFlash[i].color;
+      ctx.globalAlpha = laneFlash[i].alpha;
+      ctx.fillRect(i * laneWidth, 0, laneWidth, canvas.height);
+      ctx.globalAlpha = 1.0;
+
+      laneFlash[i].alpha -= 0.05;
+    }
+  }
+
+  /* ------------------------------
+     EXPLOSIONS
+  ------------------------------ */
+  for (let e of explosions) {
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+    ctx.strokeStyle = e.color;
+    ctx.globalAlpha = e.alpha;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+
+    e.radius += 2;
+    e.alpha -= 0.08;
+  }
+  explosions = explosions.filter(e => e.alpha > 0);
+
+  /* ------------------------------
+     HUD
+  ------------------------------ */
   ctx.fillStyle = "white";
   ctx.font = "18px sans-serif";
   ctx.fillText("Score: " + score, 10, 25);
