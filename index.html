@@ -112,6 +112,8 @@ function buildSongMenu() {
    GAME VARIABLES
 ------------------------------ */
 let notes = [];
+let internalMarkers = [];   // ★ 5番レーン用マーカー
+let bpmCurrent = 120;       // ★ 終了判定用に保持
 let startTime = 0;
 let score = 0, combo = 0, maxCombo = 0;
 let judgeCount = { Perfect: 0, Good: 0, Miss: 0 };
@@ -119,7 +121,7 @@ let lastJudgment = "", lastJudgmentTimer = 0;
 let holdState = [null, null, null, null];
 let audio = null;
 
-const lanes = 4;
+const lanes = 4; // playable lanes: 0–3
 const laneWidth = canvas.width / lanes;
 const hitY = 500;
 const travelTime = 2.0;
@@ -169,19 +171,30 @@ async function startGame(songIndex, difficulty) {
   const chart = await res.json();
 
   const bpm = chart.bpm;
+  bpmCurrent = bpm; // ★ 終了判定用に保持
   const pattern = chart.patterns[difficulty];
+  const markers = chart.patterns.internalMarkers || [];
 
-  // Generate notes
-  notes = pattern.map(n => ({
-    lane: n.lane,
-    time: n.beat * 60 / bpm,
-    hitTime: n.beat * 60 / bpm + travelTime,
-    endTime: n.endBeat ? n.endBeat * 60 / bpm : null,
-    endHitTime: n.endBeat ? n.endBeat * 60 / bpm + travelTime : null,
-    type: n.type,
-    judged: false,
-    glow: 0,
-    active: false
+  // Generate playable notes (lane 0–3 only)
+  notes = pattern
+    .filter(n => n.lane !== 4) // ★ 内部マーカー除外
+    .map(n => ({
+      lane: n.lane,
+      time: n.beat * 60 / bpm,
+      hitTime: n.beat * 60 / bpm + travelTime,
+      endTime: n.endBeat ? n.endBeat * 60 / bpm : null,
+      endHitTime: n.endBeat ? n.endBeat * 60 / bpm + travelTime : null,
+      type: n.type,
+      judged: false,
+      glow: 0,
+      active: false
+    }));
+
+  // Internal markers (lane:4) → 時間だけ保持
+  internalMarkers = markers.map(m => ({
+    beat: m.beat,
+    time: m.beat * 60 / bpm,
+    hitTime: m.beat * 60 / bpm + travelTime
   }));
 
   // Reset game state
@@ -189,6 +202,9 @@ async function startGame(songIndex, difficulty) {
   combo = 0;
   maxCombo = 0;
   judgeCount = { Perfect: 0, Good: 0, Miss: 0 };
+  lastJudgment = "";
+  lastJudgmentTimer = 0;
+  holdState = [null, null, null, null];
 
   // Play audio
   audio = new Audio(song.audio);
@@ -280,17 +296,28 @@ function handleTouchEnd() {
 }
 
 /* ------------------------------
-   MAIN LOOP
+   END CHECK (with internal markers)
 ------------------------------ */
 function checkEnd(t) {
   let lastEnd = 0;
+
+  // playable notes
   for (let n of notes) {
     const end = n.type === "long" ? n.endHitTime : n.hitTime;
     if (end > lastEnd) lastEnd = end;
   }
+
+  // internal markers (lane:4)
+  for (let m of internalMarkers) {
+    if (m.hitTime > lastEnd) lastEnd = m.hitTime;
+  }
+
   return t > lastEnd + 1.0;
 }
 
+/* ------------------------------
+   MAIN LOOP
+------------------------------ */
 function update() {
   const now = performance.now() / 1000;
   const t = now - startTime;
@@ -313,7 +340,7 @@ function update() {
   ctx.fillStyle = "yellow";
   ctx.fillRect(0, hitY, canvas.width, 4);
 
-  // Notes
+  // Notes (0–3 only)
   for (let n of notes) {
     const y = hitY - (n.hitTime - t) * speed;
     const x = n.lane * laneWidth + 10;
