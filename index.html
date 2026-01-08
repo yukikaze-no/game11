@@ -16,7 +16,9 @@
       text-align: center;
       overflow: hidden;
     }
+
     #menu, #game, #result { margin-top: 20px; }
+
     canvas {
       background: #111;
       display: block;
@@ -25,6 +27,7 @@
       max-width: 100vw;
       max-height: 90vh;
     }
+
     button {
       padding: 10px 18px;
       margin: 6px;
@@ -60,9 +63,9 @@
 </div>
 
 <script>
-/* ------------------------------
+/* ============================================================
    CANVAS SETUP
------------------------------- */
+============================================================ */
 function isMobileDevice() {
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 }
@@ -81,15 +84,15 @@ if (isMobileDevice()) {
   canvas.style.height = "525px";
 }
 
-/* ------------------------------
+/* ============================================================
    SOUND EFFECTS
------------------------------- */
+============================================================ */
 const seClick = new Audio("se/click.mp3");
 seClick.volume = 0.35;
 
-/* ------------------------------
-   SONG LIST
------------------------------- */
+/* ============================================================
+   SONG LIST LOADING
+============================================================ */
 let songs = [];
 
 async function loadSongList() {
@@ -97,9 +100,9 @@ async function loadSongList() {
   songs = await res.json();
 }
 
-/* ------------------------------
+/* ============================================================
    MENU GENERATION
------------------------------- */
+============================================================ */
 function buildSongMenu() {
   const list = document.getElementById("songList");
   list.innerHTML = "";
@@ -113,8 +116,10 @@ function buildSongMenu() {
     list.appendChild(div);
   });
 }
-<script>
-/* GAME VARIABLES ... */
+
+/* ============================================================
+   GAME VARIABLES
+============================================================ */
 let notes = [];
 let internalMarkers = [];
 let bpmCurrent = 120;
@@ -123,6 +128,7 @@ let startTime = 0;
 let score = 0, combo = 0, maxCombo = 0;
 let judgeCount = { Perfect: 0, Good: 0, Miss: 0 };
 let lastJudgment = "", lastJudgmentTimer = 0;
+
 let holdState = [null, null, null, null];
 let audio = null;
 
@@ -138,9 +144,9 @@ const missWindow = 0.18;
 
 const keyToLane = { s: 0, d: 1, k: 2, l: 3 };
 
-/* ------------------------------
-   LANE FLASH + EXPLOSIONS
------------------------------- */
+/* ============================================================
+   VISUAL EFFECTS
+============================================================ */
 let laneFlash = [
   { alpha: 0, color: "white" },
   { alpha: 0, color: "white" },
@@ -148,20 +154,16 @@ let laneFlash = [
   { alpha: 0, color: "white" }
 ];
 
-let explosions = []; // {x, y, radius, alpha, color}
-
-/* ------------------------------
-   LONG NOTE ACTIVE GLOW
------------------------------- */
-let longGlowPhase = 0; // 光の帯アニメーション用
-
-/* ------------------------------
+let explosions = [];
+let longGlowPhase = 0;
+/* ============================================================
    INPUT HANDLING
------------------------------- */
+============================================================ */
 document.addEventListener("keydown", e => {
   const key = e.key.toLowerCase();
   if (keyToLane[key] !== undefined) handleKeyDown(keyToLane[key]);
 });
+
 document.addEventListener("keyup", e => {
   const key = e.key.toLowerCase();
   if (keyToLane[key] !== undefined) handleKeyUp(keyToLane[key]);
@@ -174,14 +176,15 @@ canvas.addEventListener("touchstart", e => {
   const lane = Math.floor(x / laneWidth);
   handleKeyDown(lane);
 });
+
 canvas.addEventListener("touchend", e => {
   e.preventDefault();
   handleTouchEnd();
 });
 
-/* ------------------------------
+/* ============================================================
    START GAME
------------------------------- */
+============================================================ */
 async function startGame(songIndex, difficulty) {
   document.getElementById("menu").style.display = "none";
   document.getElementById("result").style.display = "none";
@@ -194,30 +197,27 @@ async function startGame(songIndex, difficulty) {
   const res = await fetch(song.json);
   const chart = await res.json();
 
-  const bpm = chart.bpm;
-  bpmCurrent = bpm;
+  bpmCurrent = chart.bpm;
 
   const pattern = chart.patterns[difficulty];
   const markers = chart.patterns.internalMarkers || [];
 
-  notes = pattern
-    .filter(n => n.lane !== 4)
-    .map(n => ({
-      lane: n.lane,
-      time: n.beat * 60 / bpm,
-      hitTime: n.beat * 60 / bpm + travelTime,
-      endTime: n.endBeat ? n.endBeat * 60 / bpm : null,
-      endHitTime: n.endBeat ? n.endBeat * 60 / bpm + travelTime : null,
-      type: n.type,
-      judged: false,
-      glow: 0,
-      active: false
-    }));
+  notes = pattern.map(n => ({
+    lane: n.lane,
+    time: n.beat * 60 / bpmCurrent,
+    hitTime: n.beat * 60 / bpmCurrent + travelTime,
+    endTime: n.endBeat ? n.endBeat * 60 / bpmCurrent : null,
+    endHitTime: n.endBeat ? n.endBeat * 60 / bpmCurrent + travelTime : null,
+    type: n.type,
+    judged: false,
+    glow: 0,
+    active: false
+  }));
 
   internalMarkers = markers.map(m => ({
     beat: m.beat,
-    time: m.beat * 60 / bpm,
-    hitTime: m.beat * 60 / bpm + travelTime
+    time: m.beat * 60 / bpmCurrent,
+    hitTime: m.beat * 60 / bpmCurrent + travelTime
   }));
 
   score = 0;
@@ -235,9 +235,9 @@ async function startGame(songIndex, difficulty) {
   update();
 }
 
-/* ------------------------------
+/* ============================================================
    JUDGMENT
------------------------------- */
+============================================================ */
 function judge(diff) {
   const ad = Math.abs(diff);
   if (ad <= perfectWindow) return "Perfect";
@@ -262,17 +262,13 @@ function applyJudgment(note, result) {
   lastJudgment = result;
   lastJudgmentTimer = 0.5;
 
-  /* ------------------------------
-     LANE FLASH
-  ------------------------------ */
+  /* LANE FLASH */
   laneFlash[note.lane].alpha = 0.6;
-  if (result === "Perfect") laneFlash[note.lane].color = "deepskyblue";
-  else if (result === "Good") laneFlash[note.lane].color = "lime";
-  else laneFlash[note.lane].color = "red";
+  laneFlash[note.lane].color =
+    result === "Perfect" ? "deepskyblue" :
+    result === "Good" ? "lime" : "red";
 
-  /* ------------------------------
-     EXPLOSION EFFECT
-  ------------------------------ */
+  /* EXPLOSION */
   explosions.push({
     x: note.lane * laneWidth + laneWidth / 2,
     y: hitY,
@@ -281,19 +277,17 @@ function applyJudgment(note, result) {
     color: laneFlash[note.lane].color
   });
 
-  /* ------------------------------
-     CLICK SE
-  ------------------------------ */
+  /* CLICK SE */
   seClick.currentTime = 0;
-  if (result === "Perfect") seClick.volume = 0.45;
-  else if (result === "Good") seClick.volume = 0.35;
-  else seClick.volume = 0.25;
+  seClick.volume =
+    result === "Perfect" ? 0.45 :
+    result === "Good" ? 0.35 : 0.25;
   seClick.play();
 }
 
-/* ------------------------------
-   INPUT HANDLING
------------------------------- */
+/* ============================================================
+   INPUT PROCESSING
+============================================================ */
 function handleKeyDown(lane) {
   const t = performance.now() / 1000 - startTime;
 
@@ -317,7 +311,7 @@ function handleKeyDown(lane) {
   if (candidate.type === "tap") {
     applyJudgment(candidate, result);
   } else {
-    candidate.active = true;   // ★ ロング押下状態
+    candidate.active = true;
     holdState[lane] = candidate;
   }
 }
@@ -330,7 +324,7 @@ function handleKeyUp(lane) {
   const result = judge(t - note.endHitTime);
 
   applyJudgment(note, result || "Miss");
-  note.active = false;  // ★ 押下解除
+  note.active = false;
   holdState[lane] = null;
 }
 
@@ -346,9 +340,9 @@ function handleTouchEnd() {
   }
 }
 
-/* ------------------------------
+/* ============================================================
    END CHECK
------------------------------- */
+============================================================ */
 function checkEnd(t) {
   let lastEnd = 0;
 
@@ -363,9 +357,10 @@ function checkEnd(t) {
 
   return t > lastEnd + 1.0;
 }
-/* ------------------------------
+
+/* ============================================================
    MAIN LOOP
------------------------------- */
+============================================================ */
 function update() {
   const now = performance.now() / 1000;
   const t = now - startTime;
@@ -378,24 +373,18 @@ function update() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawBackground(t);
 
-  /* ------------------------------
-     LANE BACKGROUND
-  ------------------------------ */
+  /* LANE BACKGROUND */
   for (let i = 0; i < lanes; i++) {
     ctx.fillStyle = "rgba(255,255,255,0.05)";
     ctx.fillRect(i * laneWidth, 0, laneWidth - 2, canvas.height);
   }
 
-  /* ------------------------------
-     HIT LINE
-  ------------------------------ */
+  /* HIT LINE */
   ctx.fillStyle = "yellow";
   ctx.fillRect(0, hitY, canvas.width, 4);
 
-  /* ------------------------------
-     NOTES
-  ------------------------------ */
-  longGlowPhase += 0.1; // ★ ロング押下中の光アニメーション
+  /* NOTES */
+  longGlowPhase += 0.1;
 
   for (let n of notes) {
     const y = hitY - (n.hitTime - t) * speed;
@@ -407,36 +396,29 @@ function update() {
       if (n.type === "long" && t - n.endHitTime > missWindow) applyJudgment(n, "Miss");
     }
 
-    /* ------------------------------
-       TAP NOTE
-    ------------------------------ */
+    /* TAP */
     if (n.type === "tap") {
       ctx.fillStyle = n.glow > 0 ? "white" : "cyan";
       ctx.fillRect(x, y - 10, w, 20);
     }
 
-    /* ------------------------------
-       LONG NOTE
-    ------------------------------ */
+    /* LONG */
     if (n.type === "long") {
       const y2 = hitY - (n.endHitTime - t) * speed;
       const top = Math.min(y, y2);
       const h = Math.max(20, Math.abs(y - y2));
 
-      /* ★ 押下中の色変化 */
       if (n.active) {
-        ctx.fillStyle = "#66ffcc"; // 押している時の明るい色
-        w = laneWidth - 14;        // 少し太くして押し込み感
+        ctx.fillStyle = "#66ffcc";
+        w = laneWidth - 14;
       } else {
-        ctx.fillStyle = "lime";    // 通常色
+        ctx.fillStyle = "lime";
       }
 
       ctx.fillRect(x, top, w, h);
 
-      /* ★ 押下中の光の帯エフェクト */
       if (n.active) {
         const glowY = top + (Math.sin(longGlowPhase) * 0.5 + 0.5) * h;
-
         ctx.fillStyle = "rgba(255,255,255,0.35)";
         ctx.fillRect(x, glowY - 4, w, 8);
       }
@@ -445,23 +427,18 @@ function update() {
     if (n.glow > 0) n.glow -= 1 / 60;
   }
 
-  /* ------------------------------
-     LANE FLASH
-  ------------------------------ */
+  /* LANE FLASH */
   for (let i = 0; i < 4; i++) {
     if (laneFlash[i].alpha > 0) {
       ctx.fillStyle = laneFlash[i].color;
       ctx.globalAlpha = laneFlash[i].alpha;
       ctx.fillRect(i * laneWidth, 0, laneWidth, canvas.height);
       ctx.globalAlpha = 1.0;
-
       laneFlash[i].alpha -= 0.05;
     }
   }
 
-  /* ------------------------------
-     EXPLOSIONS
-  ------------------------------ */
+  /* EXPLOSIONS */
   for (let e of explosions) {
     ctx.beginPath();
     ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
@@ -476,9 +453,7 @@ function update() {
   }
   explosions = explosions.filter(e => e.alpha > 0);
 
-  /* ------------------------------
-     HUD
-  ------------------------------ */
+  /* HUD */
   ctx.fillStyle = "white";
   ctx.font = "18px sans-serif";
   ctx.fillText("Score: " + score, 10, 25);
@@ -486,10 +461,9 @@ function update() {
 
   if (lastJudgmentTimer > 0) {
     lastJudgmentTimer -= 1 / 60;
-    let color = "white";
-    if (lastJudgment === "Perfect") color = "deepskyblue";
-    else if (lastJudgment === "Good") color = "lime";
-    else if (lastJudgment === "Miss") color = "red";
+    let color =
+      lastJudgment === "Perfect" ? "deepskyblue" :
+      lastJudgment === "Good" ? "lime" : "red";
 
     ctx.fillStyle = color;
     ctx.font = "32px sans-serif";
@@ -502,9 +476,9 @@ function update() {
   requestAnimationFrame(update);
 }
 
-/* ------------------------------
+/* ============================================================
    BACKGROUND
------------------------------- */
+============================================================ */
 function drawBackground(t) {
   const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
   grad.addColorStop(0, "#001");
@@ -519,9 +493,9 @@ function drawBackground(t) {
   }
 }
 
-/* ------------------------------
+/* ============================================================
    RESULT
------------------------------- */
+============================================================ */
 function showResult() {
   document.getElementById("game").style.display = "none";
   document.getElementById("result").style.display = "block";
@@ -532,17 +506,17 @@ function showResult() {
     `Perfect: ${judgeCount.Perfect} / Good: ${judgeCount.Good} / Miss: ${judgeCount.Miss}`;
 }
 
-/* ------------------------------
+/* ============================================================
    RETURN TO MENU
------------------------------- */
+============================================================ */
 function returnToMenu() {
   document.getElementById("result").style.display = "none";
   document.getElementById("menu").style.display = "block";
 }
 
-/* ------------------------------
+/* ============================================================
    INIT
------------------------------- */
+============================================================ */
 window.onload = async function() {
   await loadSongList();
   buildSongMenu();
