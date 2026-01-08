@@ -113,7 +113,7 @@ function buildSongMenu() {
     list.appendChild(div);
   });
 }
-
+<script>
 /* ------------------------------
    GAME VARIABLES
 ------------------------------ */
@@ -151,6 +151,11 @@ let laneFlash = [
 ];
 
 let explosions = []; // {x, y, radius, alpha, color}
+
+/* ------------------------------
+   LONG NOTE ACTIVE GLOW
+------------------------------ */
+let longGlowPhase = 0; // 光の帯アニメーション用
 
 /* ------------------------------
    INPUT HANDLING
@@ -259,11 +264,17 @@ function applyJudgment(note, result) {
   lastJudgment = result;
   lastJudgmentTimer = 0.5;
 
+  /* ------------------------------
+     LANE FLASH
+  ------------------------------ */
   laneFlash[note.lane].alpha = 0.6;
   if (result === "Perfect") laneFlash[note.lane].color = "deepskyblue";
   else if (result === "Good") laneFlash[note.lane].color = "lime";
   else laneFlash[note.lane].color = "red";
 
+  /* ------------------------------
+     EXPLOSION EFFECT
+  ------------------------------ */
   explosions.push({
     x: note.lane * laneWidth + laneWidth / 2,
     y: hitY,
@@ -272,6 +283,9 @@ function applyJudgment(note, result) {
     color: laneFlash[note.lane].color
   });
 
+  /* ------------------------------
+     CLICK SE
+  ------------------------------ */
   seClick.currentTime = 0;
   if (result === "Perfect") seClick.volume = 0.45;
   else if (result === "Good") seClick.volume = 0.35;
@@ -305,7 +319,7 @@ function handleKeyDown(lane) {
   if (candidate.type === "tap") {
     applyJudgment(candidate, result);
   } else {
-    candidate.active = true;
+    candidate.active = true;   // ★ ロング押下状態
     holdState[lane] = candidate;
   }
 }
@@ -318,6 +332,7 @@ function handleKeyUp(lane) {
   const result = judge(t - note.endHitTime);
 
   applyJudgment(note, result || "Miss");
+  note.active = false;  // ★ 押下解除
   holdState[lane] = null;
 }
 
@@ -328,6 +343,7 @@ function handleTouchEnd() {
     if (!note) continue;
     const result = judge(t - note.endHitTime);
     applyJudgment(note, result || "Miss");
+    note.active = false;
     holdState[lane] = null;
   }
 }
@@ -349,7 +365,6 @@ function checkEnd(t) {
 
   return t > lastEnd + 1.0;
 }
-
 /* ------------------------------
    MAIN LOOP
 ------------------------------ */
@@ -365,40 +380,76 @@ function update() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawBackground(t);
 
+  /* ------------------------------
+     LANE BACKGROUND
+  ------------------------------ */
   for (let i = 0; i < lanes; i++) {
     ctx.fillStyle = "rgba(255,255,255,0.05)";
     ctx.fillRect(i * laneWidth, 0, laneWidth - 2, canvas.height);
   }
 
+  /* ------------------------------
+     HIT LINE
+  ------------------------------ */
   ctx.fillStyle = "yellow";
   ctx.fillRect(0, hitY, canvas.width, 4);
+
+  /* ------------------------------
+     NOTES
+  ------------------------------ */
+  longGlowPhase += 0.1; // ★ ロング押下中の光アニメーション
 
   for (let n of notes) {
     const y = hitY - (n.hitTime - t) * speed;
     const x = n.lane * laneWidth + 10;
-    const w = laneWidth - 20;
+    let w = laneWidth - 20;
 
     if (!n.judged) {
       if (n.type === "tap" && t - n.hitTime > missWindow) applyJudgment(n, "Miss");
       if (n.type === "long" && t - n.endHitTime > missWindow) applyJudgment(n, "Miss");
     }
 
-    if (!n.judged || n.type === "long") {
-      ctx.fillStyle = n.glow > 0 ? "white" : (n.type === "tap" ? "cyan" : "lime");
+    /* ------------------------------
+       TAP NOTE
+    ------------------------------ */
+    if (n.type === "tap") {
+      ctx.fillStyle = n.glow > 0 ? "white" : "cyan";
+      ctx.fillRect(x, y - 10, w, 20);
+    }
 
-      if (n.type === "tap") {
-        ctx.fillRect(x, y - 10, w, 20);
+    /* ------------------------------
+       LONG NOTE
+    ------------------------------ */
+    if (n.type === "long") {
+      const y2 = hitY - (n.endHitTime - t) * speed;
+      const top = Math.min(y, y2);
+      const h = Math.max(20, Math.abs(y - y2));
+
+      /* ★ 押下中の色変化 */
+      if (n.active) {
+        ctx.fillStyle = "#66ffcc"; // 押している時の明るい色
+        w = laneWidth - 14;        // 少し太くして押し込み感
       } else {
-        const y2 = hitY - (n.endHitTime - t) * speed;
-        const top = Math.min(y, y2);
-        const h = Math.max(20, Math.abs(y - y2));
-        ctx.fillRect(x, top, w, h);
+        ctx.fillStyle = "lime";    // 通常色
+      }
+
+      ctx.fillRect(x, top, w, h);
+
+      /* ★ 押下中の光の帯エフェクト */
+      if (n.active) {
+        const glowY = top + (Math.sin(longGlowPhase) * 0.5 + 0.5) * h;
+
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.fillRect(x, glowY - 4, w, 8);
       }
     }
 
     if (n.glow > 0) n.glow -= 1 / 60;
   }
 
+  /* ------------------------------
+     LANE FLASH
+  ------------------------------ */
   for (let i = 0; i < 4; i++) {
     if (laneFlash[i].alpha > 0) {
       ctx.fillStyle = laneFlash[i].color;
@@ -410,6 +461,9 @@ function update() {
     }
   }
 
+  /* ------------------------------
+     EXPLOSIONS
+  ------------------------------ */
   for (let e of explosions) {
     ctx.beginPath();
     ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
@@ -424,6 +478,9 @@ function update() {
   }
   explosions = explosions.filter(e => e.alpha > 0);
 
+  /* ------------------------------
+     HUD
+  ------------------------------ */
   ctx.fillStyle = "white";
   ctx.font = "18px sans-serif";
   ctx.fillText("Score: " + score, 10, 25);
