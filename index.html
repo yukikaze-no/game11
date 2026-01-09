@@ -4,7 +4,13 @@
   <meta charset="UTF-8">
   <title>Rhythm Game PWA</title>
 
+  <!-- スマホ最適化 -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+  <!-- iOS フルスクリーン化 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
   <link rel="manifest" href="manifest.json">
 
   <style>
@@ -15,6 +21,7 @@
       font-family: sans-serif;
       text-align: center;
       overflow: hidden;
+      height: calc(var(--vh, 1vh) * 100);
     }
 
     #menu, #game, #result { margin-top: 20px; }
@@ -25,7 +32,7 @@
       margin: 10px auto;
       touch-action: none;
       max-width: 100vw;
-      max-height: 90vh;
+      height: calc(var(--vh, 1vh) * 80);
     }
 
     button {
@@ -35,6 +42,17 @@
       border-radius: 8px;
     }
   </style>
+
+  <script>
+    // iOS の 100vh 問題対策
+    function fixMobileHeight() {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    }
+    window.addEventListener('resize', fixMobileHeight);
+    window.addEventListener('orientationchange', fixMobileHeight);
+    fixMobileHeight();
+  </script>
 </head>
 
 <body>
@@ -43,6 +61,12 @@
 <div id="menu">
   <h2>Select Song & Difficulty</h2>
   <div id="songList"></div>
+
+  <!-- スマホ用：自然な終了ボタン -->
+  <button onclick="exitGame()" style="margin-top:20px; background:#333; color:white;">
+    ゲームを終了
+  </button>
+
   <p>PC: S / D / K / L | Mobile: Tap the lanes</p>
 </div>
 
@@ -77,8 +101,7 @@ canvas.width = 400;
 canvas.height = 600;
 
 if (isMobileDevice()) {
-  canvas.style.width = (400 * 1.5) + "px";
-  canvas.style.height = (600 * 1.5) + "px";
+  canvas.style.width = "100%";
 } else {
   canvas.style.width = "350px";
   canvas.style.height = "525px";
@@ -156,6 +179,7 @@ let laneFlash = [
 
 let explosions = [];
 let longGlowPhase = 0;
+
 /* ============================================================
    INPUT HANDLING
 ============================================================ */
@@ -262,13 +286,11 @@ function applyJudgment(note, result) {
   lastJudgment = result;
   lastJudgmentTimer = 0.5;
 
-  /* LANE FLASH */
   laneFlash[note.lane].alpha = 0.6;
   laneFlash[note.lane].color =
     result === "Perfect" ? "deepskyblue" :
     result === "Good" ? "lime" : "red";
 
-  /* EXPLOSION */
   explosions.push({
     x: note.lane * laneWidth + laneWidth / 2,
     y: hitY,
@@ -277,7 +299,6 @@ function applyJudgment(note, result) {
     color: laneFlash[note.lane].color
   });
 
-  /* CLICK SE */
   seClick.currentTime = 0;
   seClick.volume =
     result === "Perfect" ? 0.45 :
@@ -373,17 +394,14 @@ function update() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawBackground(t);
 
-  /* LANE BACKGROUND */
   for (let i = 0; i < lanes; i++) {
     ctx.fillStyle = "rgba(255,255,255,0.05)";
     ctx.fillRect(i * laneWidth, 0, laneWidth - 2, canvas.height);
   }
 
-  /* HIT LINE */
   ctx.fillStyle = "yellow";
   ctx.fillRect(0, hitY, canvas.width, 4);
 
-  /* NOTES */
   longGlowPhase += 0.1;
 
   for (let n of notes) {
@@ -396,13 +414,11 @@ function update() {
       if (n.type === "long" && t - n.endHitTime > missWindow) applyJudgment(n, "Miss");
     }
 
-    /* TAP */
     if (n.type === "tap") {
       ctx.fillStyle = n.glow > 0 ? "white" : "cyan";
       ctx.fillRect(x, y - 10, w, 20);
     }
 
-    /* LONG */
     if (n.type === "long") {
       const y2 = hitY - (n.endHitTime - t) * speed;
       const top = Math.min(y, y2);
@@ -427,7 +443,6 @@ function update() {
     if (n.glow > 0) n.glow -= 1 / 60;
   }
 
-  /* LANE FLASH */
   for (let i = 0; i < 4; i++) {
     if (laneFlash[i].alpha > 0) {
       ctx.fillStyle = laneFlash[i].color;
@@ -438,7 +453,6 @@ function update() {
     }
   }
 
-  /* EXPLOSIONS */
   for (let e of explosions) {
     ctx.beginPath();
     ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
@@ -453,7 +467,6 @@ function update() {
   }
   explosions = explosions.filter(e => e.alpha > 0);
 
-  /* HUD */
   ctx.fillStyle = "white";
   ctx.font = "18px sans-serif";
   ctx.fillText("Score: " + score, 10, 25);
@@ -512,6 +525,17 @@ function showResult() {
 function returnToMenu() {
   document.getElementById("result").style.display = "none";
   document.getElementById("menu").style.display = "block";
+}
+
+/* ============================================================
+   EXIT GAME（スマホ用）
+============================================================ */
+function exitGame() {
+  if (window.matchMedia('(display-mode: standalone)').matches) {
+    window.close();
+    return;
+  }
+  location.href = "about:blank";
 }
 
 /* ============================================================
